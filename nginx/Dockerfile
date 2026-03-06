@@ -1,5 +1,8 @@
 FROM nginx:alpine
 
+# Связываем пакет с репозиторием
+LABEL org.opencontainers.image.source=https://github.com/carielflore/containers-lab-1
+
 # Копирование конфигурации Nginx
 COPY nginx.conf /etc/nginx/nginx.conf
 

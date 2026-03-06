@@ -23,6 +23,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 # Stage 2: Final
 FROM alpine:latest
 
+# Связываем пакет с репозиторием
+LABEL org.opencontainers.image.source=https://github.com/carielflore/containers-lab-1
+
 # Установка CA сертификатов для HTTPS
 RUN apk --no-cache add ca-certificates
 
