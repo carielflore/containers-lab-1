@@ -33,7 +33,7 @@ WORKDIR /root/
 COPY --from=builder /app/main .
 
 # Копирование статических файлов
-COPY --from=builder /app/static ./static
+#COPY --from=builder /app/static ./static
 
 # Экспонирование порта
 EXPOSE 8080
