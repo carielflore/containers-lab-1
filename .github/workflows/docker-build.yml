@@ -3,56 +3,72 @@ name: Build and Push Docker Images
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      
-      - name: Login to GHCR
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      # Build and push Go app
-      - id: meta-go
+      - name: Extract metadata for Go app
+        id: meta-go
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
 
       - name: Build and push Go app
         uses: docker/build-push-action@v5
         with:
           context: ./app
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-go.outputs.tags }}
           labels: ${{ steps.meta-go.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Build and push Nginx
-      - id: meta-nginx
+      - name: Extract metadata for Nginx
+        id: meta-nginx
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=sha
 
       - name: Build and push Nginx
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v5
         with:
           context: ./nginx
@@ -60,34 +76,16 @@ jobs:
           push: true
           tags: ${{ steps.meta-nginx.outputs.tags }}
           labels: ${{ steps.meta-nginx.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # Wait for images to be available
-      - name: Wait for images
+      - name: Test the built images
+        if: github.event_name != 'pull_request'
         run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "Waiting for images with tag: sha-${SHORT_SHA}"
-          
-          for image in app nginx; do
-            echo "Checking $image..."
-            for i in {1..12}; do
-              if docker manifest inspect ghcr.io/${{ github.repository }}/$image:sha-${SHORT_SHA} > /dev/null 2>&1; then
-                echo "✅ $image available"
-                break
-              fi
-              echo "⏳ Attempt $i/12, waiting 5s..."
-              sleep 5
-              if [ $i -eq 12 ]; then
-                echo "❌ $image not available after 60s"
-                exit 1
-              fi
-            done
-          done
-
-      # Test with the specific SHA tag
-      - name: Test images
-        run: |
+          # Получаем короткий SHA
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           
+          # Создаем временный docker-compose файл с правильными тегами
           cat > docker-compose.test.yml << EOF
           services:
             postgres:
@@ -111,7 +109,17 @@ jobs:
                 - app
           EOF
           
+          echo "Waiting for images to be available in GHCR..."
+          sleep 10
+          
+          echo "Starting test environment..."
           docker compose -f docker-compose.test.yml up -d
-          sleep 20
-          curl -f http://localhost/api/health
+          
+          echo "Waiting for services to start..."
+          sleep 30
+          
+          echo "Checking health endpoint..."
+          curl -f http://localhost/api/health || exit 1
+          
+          echo "Tests passed! Stopping containers..."
           docker compose -f docker-compose.test.yml down
