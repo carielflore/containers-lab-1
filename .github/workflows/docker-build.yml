@@ -13,7 +13,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,9 +79,70 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  test:
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
       - name: Test the built images
+        env:
+          APP_IMAGE: ghcr.io/${{ github.repository }}/app:sha-${{ github.sha }}
+          NGINX_IMAGE: ghcr.io/${{ github.repository }}/nginx:sha-${{ github.sha }}
         run: |
+          # Создаем временный docker-compose файл с подставленными значениями
+          cat > docker-compose.test.yml << EOF
+          version: '3.8'
+          services:
+            postgres:
+              image: postgres:15-alpine
+              environment:
+                POSTGRES_PASSWORD: secret
+                POSTGRES_DB: myapp_test
+              networks:
+                - test-network
+            app:
+              image: ${APP_IMAGE}
+              environment:
+                DB_HOST: postgres
+                DB_PASSWORD: secret
+                DB_NAME: myapp_test
+              depends_on:
+                - postgres
+              networks:
+                - test-network
+            nginx:
+              image: ${NGINX_IMAGE}
+              ports:
+                - "80:80"
+              depends_on:
+                - app
+              networks:
+                - test-network
+          networks:
+            test-network:
+          EOF
+          
+          echo "Starting test environment..."
           docker compose -f docker-compose.test.yml up -d
+          
+          echo "Waiting for services to start..."
           sleep 30
-          curl -f http://localhost/health || exit 1
-          docker compose down
+          
+          echo "Checking health endpoint..."
+          curl -f http://localhost/api/health || exit 1
+          
+          echo "Checking users endpoint..."
+          curl -f http://localhost/api/users || exit 1
+          
+          echo "✅ Tests passed! Stopping containers..."
+          docker compose -f docker-compose.test.yml down
