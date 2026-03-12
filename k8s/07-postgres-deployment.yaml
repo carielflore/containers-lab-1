@@ -45,7 +45,6 @@ spec:
       - name: init-script
         configMap:
           name: postgres-init-sql
-
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -60,7 +59,7 @@ data:
         name TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-
+    
     INSERT INTO users (name) VALUES
     ('Kubernetes Beginner'),
     ('Pod Master'),
