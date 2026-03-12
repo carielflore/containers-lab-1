@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - 'k8s/*.yaml'
+      - '.github/workflows/validate-k8s.yaml'
   pull_request:
     paths:
       - 'k8s/*.yaml'
+      - '.github/workflows/validate-k8s.yaml'
 
 jobs:
   validate:
@@ -15,14 +17,38 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
+    - name: Install kubeval
+      run: |
+        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+        tar xf kubeval-linux-amd64.tar.gz
+        sudo cp kubeval /usr/local/bin
+        kubeval --version
 
-    - name: Validate with kubectl
+    - name: Validate with kubeval
       run: |
         for file in k8s/*.yaml; do
-          echo "Checking $file"
-          kubectl apply --dry-run=client -f $file
+          echo "📄 Validating $file"
+          kubeval --strict --ignore-missing-schemas $file
         done
+
+    - name: Install kubeconform (альтернатива kubeval)
+      run: |
+        wget https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+        tar xf kubeconform-linux-amd64.tar.gz
+        sudo cp kubeconform /usr/local/bin
+        kubeconform -version
+
+    - name: Validate with kubeconform
+      run: |
+        for file in k8s/*.yaml; do
+          echo "📄 Validating $file with kubeconform"
+          kubeconform -strict -ignore-missing-schemas $file
+        done
+
+    - name: Check YAML syntax
+      run: |
+        for file in k8s/*.yaml; do
+          echo "📄 Checking YAML syntax: $file"
+          python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
+        done
+        echo "✅ All YAML files have valid syntax"
