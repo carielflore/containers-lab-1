@@ -1,0 +1,35 @@
+name: Validate Kubernetes Manifests
+
+on:
+  push:
+    paths:
+      - 'k8s/*.yaml'
+  pull_request:
+    paths:
+      - 'k8s/*.yaml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Validate YAML syntax
+      run: |
+        for file in k8s/*.yaml; do
+          echo "Validating $file"
+          python -c "import yaml; yaml.safe_load(open('$file'))"
+        done
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Validate with kubectl
+      run: |
+        for file in k8s/*.yaml; do
+          echo "Checking $file"
+          kubectl apply --dry-run=client -f $file
+        done

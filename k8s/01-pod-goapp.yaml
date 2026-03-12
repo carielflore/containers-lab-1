@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: go-app-pod
+  labels:
+    app: go-app
+spec:
+  containers:
+  - name: go-app
+    image: ghcr.io/carielflore/containers-lab-1/app:latest
+    ports:
+    - containerPort: 8080
