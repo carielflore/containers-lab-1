@@ -15,9 +15,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Validate YAML syntax
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Validate with kubectl
       run: |
         for file in k8s/*.yaml; do
-          echo "Checking $file"
-          python3 -c "import yaml; yaml.safe_load(open('$file'))"
+          echo "🔍 Validating $file"
+          kubectl apply --dry-run=client --validate=true -f $file
         done
