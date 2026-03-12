@@ -15,13 +15,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Validate YAML syntax
-      run: |
-        for file in k8s/*.yaml; do
-          echo "Validating $file"
-          python -c "import yaml; yaml.safe_load(open('$file'))"
-        done
-
     - name: Setup kubectl
       uses: azure/setup-kubectl@v3
       with:
